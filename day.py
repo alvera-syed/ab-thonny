@@ -2,10 +2,11 @@ import network
 import ntptime
 import utime
 import machine
+import random
 from machine import Pin
 import neopixel
 
-# Wi-Fi credentials
+# Wi-Fi credential
 WIFI_SSID = "FPS-Guest"
 WIFI_PASSWORD = ""
 
@@ -16,12 +17,11 @@ NTP_SERVER = "pool.ntp.org"
 PIXEL_PIN = 13  # GPIO pin connected to the NeoPixel data line
 NUM_PIXELS = 64  # 8x8 grid = 64 pixels
 
-
 # A and B day lists
 aDays = [
     "09-03-2024", "09-04-2024", "09-06-2024", "09-10-2024", "09-12-2024", 
     "09-16-2024", "09-18-2024", "09-20-2024", "09-24-2024", "09-26-2024", 
-    "10-01-2024", 				"10-09-2024", "10-11-2024", "10-03-2024",
+    "10-01-2024", "10-09-2024", "10-11-2024", "10-03-2024", "10-07-2024",
     "10-15-2024", "10-17-2024", "10-21-2024", "10-23-2024", "10-28-2024", 
     "10-30-2024", "11-01-2024", "11-05-2024", "11-07-2024", "11-11-2024", 
     "11-13-2024", "11-15-2024", "11-19-2024", "11-21-2024", "11-25-2024", 
@@ -40,7 +40,7 @@ aDays = [
 ]
 
 bDays = [
-    "09-05-2024", "09-09-2024", "09-11-2024", "09-13-2024", "09-17-2024", "10-07-2024",
+    "09-05-2024", "09-09-2024", "09-11-2024", "09-13-2024", "09-17-2024", 
     "09-19-2024", "09-23-2024", "09-25-2024", "09-27-2024", "10-02-2024", 
     "10-04-2024", "10-08-2024", "10-10-2024", "10-14-2024", "10-16-2024", 
     "10-18-2024", "10-22-2024", "10-24-2024", "10-29-2024", "10-31-2024", 
@@ -61,17 +61,6 @@ bDays = [
 ]
 
 # LED patterns for 'A' and 'B'
-# PATTERN_A = [
-#     0, 1, 1, 1, 1, 1, 0, 0,
-#     0, 1, 0, 0, 0, 1, 0, 0,
-#     0, 1, 0, 0, 0, 1, 0, 0,
-#     0, 1, 1, 1, 1, 1, 0, 0,
-#     0, 1, 0, 0, 0, 1, 0, 0,
-#     0, 1, 0, 0, 0, 1, 0, 0,
-#     0, 1, 0, 0, 0, 1, 0, 0,
-#     0, 0, 0, 0, 0, 0, 0, 0,
-# ]
-
 PATTERN_A = [
     0, 0, 0, 1, 1, 0, 0, 0,
     0, 0, 1, 0, 0, 1, 0, 0,
@@ -82,16 +71,6 @@ PATTERN_A = [
     0, 1, 0, 0, 0, 0, 1, 0,
     0, 1, 0, 0, 0, 0, 1, 0,
 ]
-
-
-#     0, 0, 0, 0, 0, 0, 0, 0,
-#     1, 1, 1, 1, 1, 1, 1, 1,
-#     0, 0, 0, 0, 0, 0, 0, 0,
-#     1, 1, 1, 1, 1, 1, 1, 1,
-#     0, 0, 0, 0, 0, 0, 0, 0,
-#     1, 1, 1, 1, 1, 1, 1, 1,
-#     0, 0, 0, 0, 0, 0, 0, 0,
-#     1, 1, 1, 1, 1, 1, 1, 1,
 
 PATTERN_B = [
     0, 0, 1, 1, 1, 1, 1, 0,
@@ -127,17 +106,53 @@ def get_day_type(current_date):
     else:
         return 'N'  # Neither A nor B day
 
-def display_pattern(np, pattern):
-    for i, val in enumerate(pattern):
-        
-        if(i%8 == 0):
-            print()
-        print(val,end="")
-        if val:
-            np[i] = (255, 0, 0)  # Red color for 'on' pixels
+def gradient(np, pattern, color_start, color_end, steps=30):
+    for step in range(steps):
+        r = int(color_start[0] + (color_end[0] - color_start[0]) * (step / steps))
+        g = int(color_start[1] + (color_end[1] - color_start[1]) * (step / steps))
+        b = int(color_start[2] + (color_end[2] - color_start[2]) * (step / steps))
+
+        for i in range(NUM_PIXELS):
+            if pattern[i]:  # Only light up pixels that are part of the pattern
+                np[i] = (r, g, b)
+            else:
+                np[i] = (0, 0, 0)  # Ensure off for non-pattern pixels
+        np.write()
+        utime.sleep(0.1)  # Adjust speed of gradient
+
+def display_full_color(np, pattern, color):
+    for i in range(NUM_PIXELS):
+        if pattern[i]:  # Only light up pixels that are part of the pattern
+            np[i] = color
         else:
-            np[i] = (0, 0, 0)  # Off
+            np[i] = (0, 0, 0)  # Ensure off for non-pattern pixels
     np.write()
+
+def flash_color(np, pattern, color, duration=5, interval=0.2):
+    end_time = utime.time() + duration
+    while utime.time() < end_time:
+        # Flash on
+        for i in range(NUM_PIXELS):
+            if pattern[i]:
+                np[i] = color
+            else:
+                np[i] = (0, 0, 0)  # Ensure off for non-pattern pixels
+        np.write()
+        utime.sleep(interval)
+
+        # Flash off
+        for i in range(NUM_PIXELS):
+            if pattern[i]:
+                np[i] = (0, 0, 0)  # Turn off the pixels
+        np.write()
+        utime.sleep(interval)
+
+def light_up_pattern(np, pattern, color, delay=0.2):
+    for i in range(NUM_PIXELS):
+        if pattern[i]:  # Only light up pixels that are part of the pattern
+            np[i] = color
+            np.write()
+            utime.sleep(delay)  # Delay between lighting each LED
 
 def main():
     # Connect to WiFi and sync time
@@ -155,18 +170,23 @@ def main():
         
         print(f"current_date: {current_date}")
         print(f"day_type: {day_type}")
+
         if day_type == 'A':
-            print("A")
-            display_pattern(np, PATTERN_A)
+            light_up_pattern(np, PATTERN_A, (255, 30, 0))  # Light up A pattern one by one from left to right
+            gradient(np, PATTERN_A, (255, 5, 0), (255, 30, 0))  # Gradient for A
+            display_full_color(np, PATTERN_A, (255, 30, 0))  # Keep A lit
         elif day_type == 'B':
-            print("B")
-            display_pattern(np, PATTERN_B)
+            light_up_pattern(np, PATTERN_B, (0, 0, 255))  # Light up B pattern one by one from left to right
+            gradient(np, PATTERN_B, (173, 216, 230), (0, 0, 255))  # Gradient for B
+            display_full_color(np, PATTERN_B, (0, 0, 255))  # Keep B lit
         else:
             np.fill((0, 0, 0))  # Turn off all LEDs if it's neither A nor B day
             np.write()
-        
+
         # Wait for 1 hour before checking again
         utime.sleep(3600)
+
+
 
 if __name__ == "__main__":
     main()
